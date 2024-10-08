@@ -243,7 +243,7 @@ private:
   rclcpp::Time can_rpts_time_;
   // template<typename T>
   // void callbackFromVehicleCanX(const typename T::SharedPtr msg);
-  void callbackFromVehicleCan(const std::shared_ptr<can_msgs::msg::Frame> &msg);
+  void callbackFromVehicleCan(const can_msgs::msg::Frame::ConstSharedPtr& msg);
   void callbackCanRptWrap();
   void callbackCanRpt();
   std::unordered_map<unsigned int, std::pair<rclcpp::Time, std::shared_ptr<LockedData>>> can_cmds_; // autoware下发到CAN命令映射
@@ -255,7 +255,10 @@ private:
     const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & turn,
     const autoware_vehicle_msgs::msg::HazardLightsCommand & hazard);
   static constexpr auto INTER_MSG_PAUSE = std::chrono::milliseconds(1);
-  rclcpp::Publisher<can_msgs::msg::Frame>::SharedPtr pub_can_rx_;
+  // rclcpp::Publisher<can_msgs::msg::Frame>::SharedPtr pub_can_rx_;
+
+  void get_params();
+
 };
 
 }
