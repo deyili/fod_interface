@@ -59,6 +59,7 @@ class Fod3TxMsg
 public:
   static std::shared_ptr<Fod3TxMsg> make_message(const uint32_t & can_id);
   virtual void parse(const std::vector<uint8_t> & in) = 0;
+  virtual std::string toString() = 0;
 };
 
 // 下发CAN的命令生成
@@ -152,9 +153,10 @@ public:
   uint8_t enstate; // 1|2@0+ (1,0) [0|2] ""  ACU
   uint8_t flt1; // 15|8@0+ (1,0) [0|1] ""  ACU
   uint8_t flt2; // 23|8@0+ (1,0) [0|1] ""  ACU
-  float pedal_actual; // 31|16@0+ (0.1,0) [0|100] "%"  ACU
+  float throttle_pedal_actual; // 31|16@0+ (0.1,0) [0|100] "%"  ACU
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class BrakeRptMsg : public Fod3TxMsg
@@ -165,9 +167,10 @@ public:
   uint8_t enstate; // 1|2@0+ (1,0) [0|2] ""  ACU
   uint8_t flt1; // 15|8@0+ (1,0) [0|1] ""  ACU
   uint8_t flt2; // 23|8@0+ (1,0) [0|1] ""  ACU
-  float pedal_actual; // 31|16@0+ (0.1,0) [0|100] "%"  ACU
+  float brake_pedal_actual; // 31|16@0+ (0.1,0) [0|100] "%"  ACU
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class SteeringRptMsg : public Fod3TxMsg
@@ -180,9 +183,10 @@ public:
   uint8_t flt2; // 23|8@0+ (1,0) [0|255] ""  ACU
   float angle_actual; // 31|16@0+ (1,-500) [-500|500] "deg"  ACU
   float angle_rear_actual; // 47|16@0+ (1,-500) [-500|500] "deg" Vector__XXX
-  uint8_t angle_speed_actual; // 63|8@0+ (1,0) [0|250] "deg/s"  ACU
+  float angle_speed_actual; // 63|8@0+ (1,0) [0|250] "deg/s"  ACU
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class GearRptMsg : public Fod3TxMsg
@@ -194,6 +198,7 @@ public:
   uint8_t gear_flt; // 15|8@0+ (1,0) [0|1] ""  ACU
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class ParkRptMsg : public Fod3TxMsg
@@ -205,6 +210,7 @@ public:
   uint8_t park_flt; // 15|8@0+ (1,0) [0|1] ""  ACU
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class VcuRptMsg : public Fod3TxMsg
@@ -230,6 +236,7 @@ public:
   bool headlight_actual; // 59|1@0+ (1,0) [0|0] "" Vector__XXX
 
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class WheelSpeedRptMsg : public Fod3TxMsg
@@ -242,6 +249,7 @@ public:
   float rl; // 39|16@0+ (0.001,0) [0|65.535] "m/s"  ACU
   float rr; // 55|16@0+ (0.001,0) [0|65.535] "m/s"  ACU
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 class BmsRptMsg : public Fod3TxMsg
@@ -254,6 +262,7 @@ public:
   uint8_t soc; // 39|8@0+ (1,0) [0|100] "%" Vector__XXX
   float leadacid_voltage; // 55|8@0+ (0.1,0) [0|0] "V" Vector__XXX
   void parse(const std::vector<uint8_t> & in);
+  std::string toString();
 };
 
 }  // namespace pacmod3

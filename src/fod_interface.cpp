@@ -158,6 +158,14 @@ FodInterface::FodInterface()
     create_publisher<SteeringWheelStatusStamped>("/vehicle/status/steering_wheel_status", 1);
   // door_status_pub_ =
   //   create_publisher<tier4_api_msgs::msg::DoorStatus>("/vehicle/status/door_status", 1);
+  pub_rpt500_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt500", rclcpp::QoS{1});
+  pub_rpt501_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt501", rclcpp::QoS{1});
+  pub_rpt502_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt502", rclcpp::QoS{1});
+  pub_rpt503_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt503", rclcpp::QoS{1});
+  pub_rpt504_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt504", rclcpp::QoS{1});
+  pub_rpt505_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt505", rclcpp::QoS{1});
+  pub_rpt506_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt506", rclcpp::QoS{1});
+  pub_rpt512_ = create_publisher<std_msgs::msg::String>("/vehicle/status/rpt512", rclcpp::QoS{1});
 
   /* service */
   //  From autoware
@@ -170,6 +178,8 @@ FodInterface::FodInterface()
   const auto period_ns = rclcpp::Rate(loop_rate_).period();
   timer_ = rclcpp::create_timer(
     this, get_clock(), period_ns, std::bind(&FodInterface::publishCommands, this));
+  timer_rpt_ = rclcpp::create_timer(
+    this, get_clock(), period_ns, std::bind(&FodInterface::callbackCanRpt, this));
 
   can_cmds_[ThrottleCmdMsg::CAN_ID] = std::make_pair(
     this->now(), std::shared_ptr<LockedData>(new LockedData(ThrottleCmdMsg::DATA_LENGTH)));
@@ -225,21 +235,37 @@ FodInterface::FodInterface()
 void FodInterface::callbackFromVehicleCan(const can_msgs::msg::Frame::ConstSharedPtr & msg)
 {
   // 处理CAN上报的消息
-  std::ostringstream data_stream;
-  for (const auto & byte : msg->data) {
-    data_stream << std::hex << static_cast<int>(byte) << " ";
-  }
-  RCLCPP_INFO(
-    this->get_logger(), "Received CAN frame with ID: %x, Data: %s", msg->id,
-    data_stream.str().c_str());
-  // RCLCPP_INFO(this->get_logger(), "Received CAN frame with ID: %x, Data: %s", msg->id,
-  // msg->data.c_str());
+  // std::ostringstream data_stream;
+  // for (const auto & byte : msg->data) {
+  //   data_stream << std::hex << static_cast<int>(byte) << " ";
+  // }
+  // RCLCPP_INFO(
+  //   this->get_logger(), "Received CAN frame with ID: %x, Data: %s", msg->id,
+  //   data_stream.str().c_str());
 
   auto parser_class = Fod3TxMsg::make_message(msg->id);
   if (parser_class != nullptr) {
     const std::vector<uint8_t> data_copy(msg->data.begin(), msg->data.end());
     parser_class->parse(data_copy);
     can_rpts_[msg->id] = std::make_pair(this->now(), parser_class);
+    std_msgs::msg::String msg2;
+    msg2.data = parser_class->toString();
+    if (msg->id == 0x500)
+      pub_rpt500_->publish(msg2);
+    else if (msg->id == 0x501)
+      pub_rpt501_->publish(msg2);
+    else if (msg->id == 0x502)
+      pub_rpt502_->publish(msg2);
+    else if (msg->id == 0x503)
+      pub_rpt503_->publish(msg2);
+    else if (msg->id == 0x504)
+      pub_rpt504_->publish(msg2);
+    else if (msg->id == 0x505)
+      pub_rpt505_->publish(msg2);
+    else if (msg->id == 0x506)
+      pub_rpt506_->publish(msg2);
+    else if (msg->id == 0x512)
+      pub_rpt512_->publish(msg2);
 
     if (msg->id == VcuRptMsg::CAN_ID) {
       // auto dc_parser = std::dynamic_pointer_cast<VcuRptMsg>(parser_class);
@@ -250,7 +276,7 @@ void FodInterface::callbackFromVehicleCan(const can_msgs::msg::Frame::ConstShare
       //   set_enable(false);
       // }
     }
-    callbackCanRptWrap();
+    // callbackCanRptWrap();
   }
 }
 
@@ -289,9 +315,12 @@ void FodInterface::callbackCanRpt()
     std::dynamic_pointer_cast<WheelSpeedRptMsg>(can_rpts_[WheelSpeedRptMsg::CAN_ID].second);
   auto rpt_bms = std::dynamic_pointer_cast<BmsRptMsg>(can_rpts_[BmsRptMsg::CAN_ID].second);
 
+  if (!rpt_throttle || !rpt_brake || !rpt_gear || !rpt_steering || !rpt_park || !rpt_vcu || !rpt_wheel_speed) {
+    return ;
+  }
   // 将CAN上报的消息转化成autoware内部消息，上报到autoware
   const double current_velocity = rpt_vcu->vehicle_speed;  // current vehicle speed > 0 [m/s]
-  const double current_steer_wheel = degrees_to_radians(rpt_steering->angle_actual);  // rad
+  const double current_steer_wheel = rpt_steering->angle_actual;  // rad
 
   const double adaptive_gear_ratio =
     calculateVariableGearRatio(current_velocity, current_steer_wheel);
@@ -306,6 +335,8 @@ void FodInterface::callbackCanRpt()
     SteeringWheelStatusStamped steering_wheel_status_msg;
     steering_wheel_status_msg.stamp = header.stamp;
     steering_wheel_status_msg.data = current_steer_wheel;  // rad
+    // TODO: remove
+    if (steering_wheel_status_msg.data != 0)
     steering_wheel_status_pub_->publish(steering_wheel_status_msg);
   }
 
@@ -320,6 +351,8 @@ void FodInterface::callbackCanRpt()
     } else {
       control_mode_msg.mode = autoware_vehicle_msgs::msg::ControlModeReport::NOT_READY;
     }
+    // TODO: remove
+    if (control_mode_msg.mode != 0)
     control_mode_pub_->publish(control_mode_msg);
   }
 
@@ -329,7 +362,10 @@ void FodInterface::callbackCanRpt()
     twist.header = header;
     twist.longitudinal_velocity = current_velocity;                                 // [m/s]
     twist.heading_rate = current_velocity * std::tan(current_steer) / wheel_base_;  // [rad/s]
-    vehicle_twist_pub_->publish(twist);
+    // TODO: remove
+    if (twist.longitudinal_velocity != 0.0f || twist.heading_rate != 0) {
+      vehicle_twist_pub_->publish(twist);
+    }
   }
 
   /* 发布当前的换挡状态信息 */
@@ -349,7 +385,9 @@ void FodInterface::callbackCanRpt()
     autoware_vehicle_msgs::msg::SteeringReport steer_msg;
     steer_msg.stamp = header.stamp;
     steer_msg.steering_tire_angle = current_steer;
-    steering_status_pub_->publish(steer_msg);
+    // TODO: remove
+    if (steer_msg.steering_tire_angle != 0)
+      steering_status_pub_->publish(steer_msg);
   }
 
   /* 发布控制状态信息 */
@@ -357,8 +395,10 @@ void FodInterface::callbackCanRpt()
     ActuationStatusStamped actuation_status;
     actuation_status.header = header;
     actuation_status.status.accel_status = rpt_vcu->vehicle_acc;
-    actuation_status.status.brake_status = rpt_brake->pedal_actual;
+    actuation_status.status.brake_status = rpt_brake->brake_pedal_actual;
     actuation_status.status.steer_status = current_steer;
+    // TODO: remove
+    if (actuation_status.status.accel_status != 0 || actuation_status.status.brake_status != 0 || actuation_status.status.steer_status != 0)
     actuation_status_pub_->publish(actuation_status);
   }
 
@@ -369,10 +409,14 @@ void FodInterface::callbackCanRpt()
     autoware_vehicle_msgs::msg::TurnIndicatorsReport turn_msg;
     turn_msg.stamp = header.stamp;
     turn_msg.report = toAutowareTurnIndicatorsReport(static_cast<FodTurnLight>(turn_light_actual));
+    // TODO: remove
+    if (turn_msg.report != 0)
     turn_indicators_status_pub_->publish(turn_msg);
     autoware_vehicle_msgs::msg::HazardLightsReport hazard_msg;
     hazard_msg.stamp = header.stamp;
     hazard_msg.report = toAutowareHazardLightsReport(static_cast<FodTurnLight>(turn_light_actual));
+    // TODO: remove
+    if (hazard_msg.report != 0)
     hazard_lights_status_pub_->publish(hazard_msg);
   }
 }
@@ -387,7 +431,7 @@ void FodInterface::callbackActuationCmd(const ActuationCommandStamped::ConstShar
 void FodInterface::callbackEmergencyCmd(
   const tier4_vehicle_msgs::msg::VehicleEmergencyStamped::ConstSharedPtr msg)
 {
-  is_emergency_ = msg->emergency;
+  emergency_cmd_ptr_ = msg;
   prepareCommands();
 }
 
@@ -395,6 +439,13 @@ void FodInterface::callbackControlCmd(const autoware_control_msgs::msg::Control:
 {
   control_command_received_time_ = this->now();
   control_cmd_ptr_ = msg;
+  // 如果要启动，先要刹车，所以要判断是否进入启动模式。
+  // 收到第一个control命令，就认为启动，进入启动驻车模式。
+  if (!started_) {
+    started_ = true;
+    std::thread t(&FodInterface::warmMachine, this);
+    t.detach();  // 分离线程，不阻塞主线程
+  }
   prepareCommands();
 }
 
@@ -456,76 +507,95 @@ void FodInterface::prepareCommands()
     return;
   }
 
+  auto rpt_steering = std::dynamic_pointer_cast<SteeringRptMsg>(can_rpts_[SteeringRptMsg::CAN_ID].second);
+  auto rpt_vcu = std::dynamic_pointer_cast<GearRptMsg>(can_rpts_[GearRptMsg::CAN_ID].second);
+  if (!rpt_steering || !rpt_vcu) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), std::chrono::milliseconds(1000).count(),
+      "rpt_steering=%d, rpt_vcu=%d", rpt_steering != nullptr, rpt_vcu != nullptr);
+    return;
+  }
+
   const rclcpp::Time current_time = get_clock()->now();
 
+  double desired_steering_tire_angle = control_cmd_ptr_->lateral.steering_tire_angle;
+  double desired_velocity = control_cmd_ptr_->longitudinal.velocity;
+  double desired_acceleration = control_cmd_ptr_->longitudinal.acceleration;
+
+  uint8_t desired_gear = gear_cmd_ptr_->command;
+  uint8_t desired_turn_indicators = turn_indicators_cmd_ptr_->command;
+  uint8_t desired_hazard = hazard_lights_cmd_ptr_->command;
+  
+  double desired_accel = actuation_cmd_ptr_->actuation.accel_cmd + accel_pedal_offset_;
+  double desired_brake = actuation_cmd_ptr_->actuation.brake_cmd + brake_pedal_offset_;
+  double desired_steer = actuation_cmd_ptr_->actuation.steer_cmd;
+
+  // bool desired_emergency = emergency_cmd_ptr_->emergency;
+
+
   bool desired_park = false;
-  if (gear_cmd_ptr_->command == autoware_vehicle_msgs::msg::GearCommand::PARK) {
+  if (desired_gear == autoware_vehicle_msgs::msg::GearCommand::PARK) {
     desired_park = true;
   }
-  double desired_throttle = actuation_cmd_ptr_->actuation.accel_cmd + accel_pedal_offset_;
-  double desired_brake = actuation_cmd_ptr_->actuation.brake_cmd + brake_pedal_offset_;
-  if (actuation_cmd_ptr_->actuation.brake_cmd <= std::numeric_limits<double>::epsilon()) {
+  if (desired_brake <= std::numeric_limits<double>::epsilon()) {
     desired_brake = 0.0;
   }
-  // double desired_steer = actuation_cmd_ptr_->actuation.steer_cmd;
 
   /* check emergency and timeout */
-  const double control_cmd_delta_time_ms =
-    (current_time - control_command_received_time_).seconds() * 1000.0;
-  const double actuation_cmd_delta_time_ms =
-    (current_time - actuation_command_received_time_).seconds() * 1000.0;
+  const double control_cmd_delta_time_ms = (current_time - control_command_received_time_).seconds() * 1000.0;
+  const double actuation_cmd_delta_time_ms = (current_time - actuation_command_received_time_).seconds() * 1000.0;
   bool timeouted = false;
   const int t_out = command_timeout_ms_;
   if (t_out >= 0 && (control_cmd_delta_time_ms > t_out || actuation_cmd_delta_time_ms > t_out)) {
     timeouted = true;
   }
   /* check emergency and timeout */
-  const bool emergency_brake_needed =
-    (is_emergency_ && !use_external_emergency_brake_) || timeouted;
-  if (emergency_brake_needed) {
-    RCLCPP_ERROR(
-      get_logger(), "Emergency Stopping, emergency = %d, timeouted = %d", is_emergency_, timeouted);
-    desired_throttle = 0.0;
-    desired_brake = emergency_brake_;
-  }
+  // const bool emergency_brake_needed =
+  //   (is_emergency_ && !use_external_emergency_brake_) || timeouted;
+  // if (emergency_brake_needed) {
+  //   RCLCPP_ERROR(
+  //     get_logger(), "Emergency Stopping, emergency = %d, timeouted = %d", is_emergency_, timeouted);
+  //   desired_accel = 0.0;
+  //   desired_brake = emergency_brake_;
+  // }
 
   const double current_velocity = calculateVehicleVelocity();
-  auto rpt_steering =
-    std::dynamic_pointer_cast<SteeringRptMsg>(can_rpts_[SteeringRptMsg::CAN_ID].second);
-  const double current_steer_wheel = rpt_steering ? degrees_to_radians(rpt_steering->angle_actual) : 0;
-  // const double current_steer_wheel = steer_wheel_rpt_ptr_->output;
+  const double current_steer_wheel = rpt_steering->angle_actual;
 
   /* calculate desired steering wheel */
-  double adaptive_gear_ratio = calculateVariableGearRatio(current_velocity, current_steer_wheel);
-  double desired_steer_wheel =
-    (control_cmd_ptr_->lateral.steering_tire_angle - steering_offset_) * adaptive_gear_ratio;
-  desired_steer_wheel =
-    std::min(std::max(desired_steer_wheel, -max_steering_wheel_), max_steering_wheel_);
+  // double adaptive_gear_ratio = calculateVariableGearRatio(current_velocity, current_steer_wheel);
+  // double desired_steer_wheel = (desired_steering_tire_angle - steering_offset_) * adaptive_gear_ratio;
+  // desired_steer_wheel = std::min(std::max(desired_steer_wheel, -max_steering_wheel_), max_steering_wheel_);
+  double desired_steer_wheel = desired_steering_tire_angle + steering_offset_;
 
   /* check shift change */
   const double brake_for_shift_trans = 0.7;
-  auto rpt_vcu = std::dynamic_pointer_cast<GearRptMsg>(can_rpts_[GearRptMsg::CAN_ID].second);
-  auto desired_shift = rpt_vcu ? rpt_vcu->gear_actual: 0;
-  // uint16_t desired_shift = gear_cmd_rpt_ptr_->output;
-  if (std::fabs(current_velocity) < 0.1) {  // velocity is low -> the shift can be changed
-    uint8_t shift_val_ = static_cast<uint8_t>(toFodShiftCmd(*gear_cmd_ptr_));
-    if (shift_val_ != desired_shift) {  // need shift change.
-      desired_throttle = 0.0;
-      desired_brake = brake_for_shift_trans;  // set brake to change the shift
-      desired_shift = shift_val_;
-      RCLCPP_DEBUG(
-        get_logger(), "Doing shift change. current = %d, desired = %d. set brake_cmd to %f",
-        desired_shift, shift_val_, desired_brake);
-    }
+  uint8_t shift_val_ = static_cast<uint8_t>(toFodShiftCmd(desired_gear));
+  auto desired_shift = shift_val_;
+  // if (std::fabs(current_velocity) < 0.1) {  // velocity is low -> the shift can be changed
+  //   if (shift_val_ != desired_shift) {  // need shift change.
+  //     desired_accel = 0.0;
+  //     desired_brake = brake_for_shift_trans;  // set brake to change the shift
+  //     desired_shift = shift_val_;
+  //     RCLCPP_DEBUG(
+  //       get_logger(), "Doing shift change. current = %d, desired = %d. set brake_cmd to %f",
+  //       desired_shift, shift_val_, desired_brake);
+  //   }
+  // }
+  uint8_t turn_light_ctrl = static_cast<uint8_t>(toFodTurnCmd(desired_turn_indicators, desired_hazard));
+
+  auto desired_acc = std::max(0.0, std::min(desired_accel, desired_acceleration));
+  desired_acc = std::min(desired_acc, max_throttle_);
+
+  if (!warmed_) {
+    // 未启动，一直踩刹车
+    desired_brake = 50.0;
+    desired_velocity = 0.0;
+    desired_steer_wheel = 0.0;
   }
-  uint8_t turn_light_ctrl = static_cast<uint8_t>(
-    toFodTurnCmdWithHazardRecover(*turn_indicators_cmd_ptr_, *hazard_lights_cmd_ptr_));
 
   ThrottleCmdMsg encoder_throttle;
-  // encoder_throttle.encode(true, 0, std::max(0.0, std::min(desired_throttle, max_throttle_)),
-  // current_velocity);
-  encoder_throttle.encode(
-    true, std::max(0.0, std::min(desired_throttle, max_throttle_)), 0, current_velocity);
+  // encoder_throttle.encode(true, desired_acc, 0, desired_velocity);
+  encoder_throttle.encode(true, 0, 0, desired_velocity);
   BrakeCmdMsg encoder_brake;
   encoder_brake.encode(true, 0, 0, desired_brake);
   SteeringCmdMsg encoder_steering;
@@ -535,9 +605,13 @@ void FodInterface::prepareCommands()
   ParkCmdMsg encoder_park;
   encoder_park.encode(true, desired_park);
   VehicleModeCmdMsg encoder_vehicle_mode;
-  encoder_vehicle_mode.encode(
-    0, true, 1, turn_light_ctrl, false,
-    false);  // 标准方向盘模式,自动驾驶,速度模式,转向灯,头灯关闭,禁用车辆识别码请求
+  encoder_vehicle_mode.encode(1, false, 1, turn_light_ctrl, false, false);  // 标准方向盘模式,自动驾驶,速度模式,转向灯,头灯关闭,禁用车辆识别码请求
+  printBuf(ThrottleCmdMsg::CAN_ID, encoder_throttle.data);
+  printBuf(BrakeCmdMsg::CAN_ID, encoder_brake.data);
+  printBuf(SteeringCmdMsg::CAN_ID, encoder_steering.data);
+  printBuf(GearCmdMsg::CAN_ID, encoder_gear.data);
+  printBuf(ParkCmdMsg::CAN_ID, encoder_park.data);
+  printBuf(VehicleModeCmdMsg::CAN_ID, encoder_vehicle_mode.data);
 
   can_cmds_[ThrottleCmdMsg::CAN_ID].second->setData(std::move(encoder_throttle.data));
   can_cmds_[BrakeCmdMsg::CAN_ID].second->setData(std::move(encoder_brake.data));
@@ -555,22 +629,46 @@ void FodInterface::prepareCommands()
 
 void FodInterface::publishCommands()
 {
+  if (!started_) { // 未启动,不发命令
+    return;
+  }
   // 发送底盘CAN命令
-  for (auto & cmd : can_cmds_) {
-    auto msg = std::make_unique<can_msgs::msg::Frame>();
-    auto data = cmd.second.second->getData();
+  // for (auto & cmd : can_cmds_) {
+  //   auto msg = std::make_unique<can_msgs::msg::Frame>();
+  //   auto data = cmd.second.second->getData();
 
-    msg->id = cmd.first;
+  //   msg->header.frame_id = base_frame_id_;
+  //   msg->header.stamp = get_clock()->now();
+  //   msg->id = cmd.first;
+  //   msg->is_rtr = false;
+  //   msg->is_extended = false;
+  //   msg->is_error = false;
+  //   msg->dlc = data.size();
+  //   std::move(data.begin(), data.end(), msg->data.begin());
+
+  //   frames_pub_->publish(std::move(msg));
+
+  //   std::this_thread::sleep_for(INTER_MSG_PAUSE);
+  // }
+
+  std::vector<uint32_t> ids = {GearCmdMsg::CAN_ID, ParkCmdMsg::CAN_ID, BrakeCmdMsg::CAN_ID, ThrottleCmdMsg::CAN_ID, SteeringCmdMsg::CAN_ID, VehicleModeCmdMsg::CAN_ID};
+  for (const auto& id : ids) {
+    auto pkt = can_cmds_[id];
+    auto data = pkt.second->getData();
+
+    auto msg = std::make_unique<can_msgs::msg::Frame>();
+    msg->header.frame_id = base_frame_id_;
+    msg->header.stamp = get_clock()->now();
+    msg->id = id;
     msg->is_rtr = false;
     msg->is_extended = false;
     msg->is_error = false;
     msg->dlc = data.size();
     std::move(data.begin(), data.end(), msg->data.begin());
-
     frames_pub_->publish(std::move(msg));
-
     std::this_thread::sleep_for(INTER_MSG_PAUSE);
   }
+
 }
 
 double FodInterface::calcSteerWheelRateCmd(const double gear_ratio)
@@ -616,21 +714,21 @@ double FodInterface::calculateVariableGearRatio(const double vel, const double s
     1e-5, vgr_coef_a_ + vgr_coef_b_ * vel * vel - vgr_coef_c_ * std::fabs(steer_wheel));
 }
 
-GearTarget FodInterface::toFodShiftCmd(const autoware_vehicle_msgs::msg::GearCommand & gear_cmd)
+GearTarget FodInterface::toFodShiftCmd(const uint8_t & gear_cmd)
 {
-  if (gear_cmd.command == autoware_vehicle_msgs::msg::GearCommand::PARK) {
+  if (gear_cmd == autoware_vehicle_msgs::msg::GearCommand::PARK) {
     return GearTarget::PARK;
   }
-  if (gear_cmd.command == autoware_vehicle_msgs::msg::GearCommand::REVERSE) {
+  if (gear_cmd == autoware_vehicle_msgs::msg::GearCommand::REVERSE) {
     return GearTarget::REVERSE;
   }
-  if (gear_cmd.command == autoware_vehicle_msgs::msg::GearCommand::DRIVE) {
+  if (gear_cmd == autoware_vehicle_msgs::msg::GearCommand::DRIVE) {
     return GearTarget::DRIVE;
   }
-  if (gear_cmd.command == autoware_vehicle_msgs::msg::GearCommand::LOW) {
+  if (gear_cmd == autoware_vehicle_msgs::msg::GearCommand::LOW) {
     return GearTarget::DRIVE;
   }
-  if (gear_cmd.command == autoware_vehicle_msgs::msg::GearCommand::NEUTRAL) {
+  if (gear_cmd == autoware_vehicle_msgs::msg::GearCommand::NEUTRAL) {
     return GearTarget::NEUTRAL;
   }
 
@@ -687,72 +785,23 @@ std::optional<int32_t> FodInterface::toAutowareShiftReport(GearTarget gear_actua
   return {};
 }
 
-FodTurnLight FodInterface::toFodTurnCmd(
-  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & turn,
-  const autoware_vehicle_msgs::msg::HazardLightsCommand & hazard)
+FodTurnLight FodInterface::toFodTurnCmd(const uint8_t & turn, const uint8_t & hazard)
 {
   using autoware_vehicle_msgs::msg::HazardLightsCommand;
   using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
   using pacmod3::FodTurnLight;
 
   // NOTE: hazard lights command has a highest priority here.
-  if (hazard.command == HazardLightsCommand::ENABLE) {
+  if (hazard == HazardLightsCommand::ENABLE) {
     return FodTurnLight::TURN_HAZARDS;
   }
-  if (turn.command == TurnIndicatorsCommand::ENABLE_LEFT) {
+  if (turn == TurnIndicatorsCommand::ENABLE_LEFT) {
     return FodTurnLight::TURN_LEFT;
   }
-  if (turn.command == TurnIndicatorsCommand::ENABLE_RIGHT) {
+  if (turn == TurnIndicatorsCommand::ENABLE_RIGHT) {
     return FodTurnLight::TURN_RIGHT;
   }
   return FodTurnLight::TURN_NONE;
-}
-
-FodTurnLight FodInterface::toFodTurnCmdWithHazardRecover(
-  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & turn,
-  const autoware_vehicle_msgs::msg::HazardLightsCommand & hazard)
-{
-  // using pacmod3::FodTurnLight;
-  auto rpt_vcu = std::dynamic_pointer_cast<VcuRptMsg>(can_rpts_[VcuRptMsg::CAN_ID].second);
-  if (!rpt_vcu) return FodTurnLight::TURN_NONE;
-
-  FodTurnLight hazard_cmd_val_ = hazard.command == 2
-                                   ? FodTurnLight::TURN_HAZARDS
-                                   : FodTurnLight::TURN_NONE;  // 0无, 1关闭, 2开启
-  FodTurnLight hazard_status_ = static_cast<FodTurnLight>(rpt_vcu->turn_light_actual);
-
-  if (!engage_cmd_ || hazard_cmd_val_ == hazard_status_) {
-    last_shift_inout_matched_time_ = this->now();
-    return toFodTurnCmd(turn, hazard);
-  }
-
-  if ((this->now() - last_shift_inout_matched_time_).seconds() < hazard_thresh_time_) {
-    return toFodTurnCmd(turn, hazard);
-  }
-
-  // hazard recover mode
-  if (hazard_recover_count_ > hazard_recover_cmd_num_) {
-    last_shift_inout_matched_time_ = this->now();
-    hazard_recover_count_ = 0;
-  }
-  hazard_recover_count_++;
-
-  if (
-    hazard_cmd_val_ != FodTurnLight::TURN_HAZARDS && hazard_status_ == FodTurnLight::TURN_HAZARDS) {
-    // publish hazard commands for turning off the hazard lights
-    return FodTurnLight::TURN_HAZARDS;
-  } else if (  // NOLINT
-    hazard_cmd_val_ == FodTurnLight::TURN_HAZARDS && hazard_status_ != FodTurnLight::TURN_HAZARDS) {
-    // publish none commands for turning on the hazard lights
-    return FodTurnLight::TURN_NONE;
-  } else {
-    // something wrong
-    RCLCPP_ERROR_STREAM(
-      get_logger(), "turn signal command and output do not match. "
-                      << "COMMAND: " << static_cast<uint8_t>(hazard_cmd_val_)
-                      << "; OUTPUT: " << static_cast<uint8_t>(hazard_status_));
-    return toFodTurnCmd(turn, hazard);
-  }
 }
 
 int32_t FodInterface::toAutowareTurnIndicatorsReport(FodTurnLight turn_light_actual)
@@ -837,6 +886,20 @@ void FodInterface::get_params()
 
   /* parameter for preventing gear chattering */
   margin_time_for_gear_change_ = declare_parameter("margin_time_for_gear_change", 2.0);
+}
+
+void FodInterface::printBuf(uint32_t id, std::vector<uint8_t>& data) {
+  std::ostringstream data_stream;
+  for (const auto & byte : data) {
+    data_stream << std::hex << static_cast<int>(byte) << " ";
+  }
+  RCLCPP_INFO(this->get_logger(), "send(%x): %s", id, data_stream.str().c_str());
+}
+
+void FodInterface::warmMachine() {
+  std::this_thread::sleep_for(std::chrono::seconds(3));
+  warmed_ = true;
+  prepareCommands();
 }
 
 }  // namespace pacmod3

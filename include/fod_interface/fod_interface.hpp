@@ -5,6 +5,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tier4_api_utils/tier4_api_utils.hpp>
 
+#include <std_msgs/msg/string.hpp>
+
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <autoware_vehicle_msgs/msg/engage.hpp>
@@ -138,8 +140,17 @@ private:
   rclcpp::Publisher<ActuationStatusStamped>::SharedPtr actuation_status_pub_;
   rclcpp::Publisher<SteeringWheelStatusStamped>::SharedPtr steering_wheel_status_pub_;
   // rclcpp::Publisher<tier4_api_msgs::msg::DoorStatus>::SharedPtr door_status_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt500_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt501_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt502_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt503_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt504_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt505_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt506_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_rpt512_;
 
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr timer_rpt_;
 
   /* ros param */
   bool enable_fd_;
@@ -190,6 +201,7 @@ private:
   autoware_vehicle_msgs::msg::TurnIndicatorsCommand::ConstSharedPtr turn_indicators_cmd_ptr_;
   autoware_vehicle_msgs::msg::HazardLightsCommand::ConstSharedPtr hazard_lights_cmd_ptr_;
   autoware_vehicle_msgs::msg::GearCommand::ConstSharedPtr gear_cmd_ptr_;
+  tier4_vehicle_msgs::msg::VehicleEmergencyStamped::ConstSharedPtr emergency_cmd_ptr_;
 
   // pacmod3_msgs::msg::SystemRptFloat::ConstSharedPtr steer_wheel_rpt_ptr_;  // [rad]
   // pacmod3_msgs::msg::WheelSpeedRpt::ConstSharedPtr wheel_speed_rpt_ptr_;   // [m/s]
@@ -201,8 +213,7 @@ private:
   // pacmod3_msgs::msg::SteeringCmd prev_steer_cmd_;
 
   bool engage_cmd_{false};
-  bool is_emergency_{false};
-  rclcpp::Time control_command_received_time_;
+  rclcpp::Time control_command_received_time_{rclcpp::Time(0, 0)};
   rclcpp::Time actuation_command_received_time_;
   rclcpp::Time last_shift_inout_matched_time_;
   std::shared_ptr<rclcpp::Time> last_time_to_change_gear_ptr_;
@@ -224,7 +235,7 @@ private:
   double calculateVehicleVelocity();
   double calculateVariableGearRatio(const double vel, const double steer_wheel);
   double calcSteerWheelRateCmd(const double gear_ratio);
-  GearTarget toFodShiftCmd(const autoware_vehicle_msgs::msg::GearCommand & gear_cmd);
+  GearTarget toFodShiftCmd(const uint8_t & gear_cmd);
   uint16_t getGearCmdForPreventChatter(uint16_t gear_command);
 
   std::optional<int32_t> toAutowareShiftReport(GearTarget gear_actual);
@@ -240,7 +251,7 @@ private:
 
   // windsome添加的
   std::unordered_map<unsigned int, std::pair<rclcpp::Time, std::shared_ptr<Fod3TxMsg>>> can_rpts_; // CAN上报到autoware消息映射
-  rclcpp::Time can_rpts_time_;
+  rclcpp::Time can_rpts_time_{rclcpp::Time(0, 0)};
   // template<typename T>
   // void callbackFromVehicleCanX(const typename T::SharedPtr msg);
   void callbackFromVehicleCan(const can_msgs::msg::Frame::ConstSharedPtr& msg);
@@ -248,17 +259,16 @@ private:
   void callbackCanRpt();
   std::unordered_map<unsigned int, std::pair<rclcpp::Time, std::shared_ptr<LockedData>>> can_cmds_; // autoware下发到CAN命令映射
   void prepareCommands();
-  FodTurnLight toFodTurnCmd(
-    const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & turn,
-    const autoware_vehicle_msgs::msg::HazardLightsCommand & hazard);
-  FodTurnLight toFodTurnCmdWithHazardRecover(
-    const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & turn,
-    const autoware_vehicle_msgs::msg::HazardLightsCommand & hazard);
+  FodTurnLight toFodTurnCmd(const uint8_t & turn, const uint8_t & hazard);
   static constexpr auto INTER_MSG_PAUSE = std::chrono::milliseconds(1);
   // rclcpp::Publisher<can_msgs::msg::Frame>::SharedPtr pub_can_rx_;
 
   void get_params();
+  void printBuf(uint32_t id, std::vector<uint8_t>& data);
 
+  bool started_{false};
+  bool warmed_{false};
+  void warmMachine();
 };
 
 }

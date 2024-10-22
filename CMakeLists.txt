@@ -4,6 +4,8 @@ project(fod_interface)
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+set(CMAKE_BUILD_TYPE Debug)
+
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)

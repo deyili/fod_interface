@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="fod_param_path" default="$(find-pkg-share fod_interface)/config/fod.param.yaml"/>
+
+  <!-- vehicle info -->
+  <arg name="vehicle_info_param_file" default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_info.param.yaml"/>
+
+  <include file="$(find-pkg-share canalystii_driver)/launch/can_driver_bridge_node.launch.py"/>
+
+  <!-- fod interface -->
+  <node pkg="fod_interface" exec="fod_interface" name="fod_interface" output="screen" args="--ros-args --log-level INFO">
+    <param from="$(var fod_param_path)"/>
+    <param from="$(var vehicle_info_param_file)"/>
+    <remap from="to_can_bus" to="/canalystii/to_can_bus" />
+    <remap from="from_can_bus" to="/canalystii/from_can_bus" />
+    <remap from="input/control_mode_request" to="/control/control_mode_request"/>
+  </node>
+
+</launch>
